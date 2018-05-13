@@ -68,9 +68,11 @@ def main(user_id, pub_key):
         if dist is not None:
             path = os.path.join(path, dist)
         for arch, debs in archs.items():
+            # Make a dist+arch specific directory
             arch_path = os.path.join(path, arch)
             os.makedirs(arch_path, exist_ok=True)
 
+            # Add each deb for this dist+arch to Packages
             with open(os.path.join(arch_path, 'Packages'), 'w') as packages:
                 for deb in debs:
                     logger.info('Writing %r', packages.name)
@@ -78,6 +80,7 @@ def main(user_id, pub_key):
                         ['dpkg-scanpackages', '-m', deb, '/dev/null'],
                         check=True, stdout=packages)
 
+            # Make and sign the Release files
             with open(os.path.join(arch_path, 'Release'), 'w') as release:
                 logger.info('Writing %r', release.name)
                 subprocess.run(
@@ -94,6 +97,7 @@ def main(user_id, pub_key):
                 ['gpg', '-u', user_id, '-abs',
                  '-o', release_gpg_path, release.name], check=True)
 
+            # Copy the public key
             pub_key_path = os.path.join(arch_path, os.path.basename(pub_key))
             logger.info('Copying %r', pub_key_path)
             subprocess.run(['cp', pub_key, pub_key_path], check=True)
