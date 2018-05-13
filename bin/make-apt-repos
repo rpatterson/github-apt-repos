@@ -1,0 +1,59 @@
+#!/usr/bin/python3
+"""
+Make apt repositories from *.deb's separated by architecture and component.
+"""
+
+import sys
+import os
+import re
+import pprint
+import subprocess
+
+DEB_BASENAME_RE = r'{package}([-_\.](?P<dist>.+)|)_{version}_{arch}'
+
+
+def collect_dists_archs(dir=os.curdir):
+    """
+    Group packages by dist and architecture.
+
+    Assumes the following package filename format:
+    
+    'package-dist_version_arch.deb' 
+    """
+    dists = {}
+    # TODO Use subprocess.Popen to stream results for large collections
+    for deb in subprocess.run(
+            ['find', '.', '-iname', '*.deb'],
+            check=True, stdout=subprocess.PIPE,
+            encoding=sys.stdout.encoding
+    ).stdout.strip().split('\n'):
+        arch = subprocess.run(
+            ['dpkg-deb', '-f', deb, 'Architecture'], check=True,
+            stdout=subprocess.PIPE, encoding=sys.stdout.encoding
+        ).stdout.strip()
+        package = subprocess.run(
+            ['dpkg-deb', '-f', deb, 'Package'], check=True,
+            stdout=subprocess.PIPE, encoding=sys.stdout.encoding
+        ).stdout.strip()
+        version = subprocess.run(
+            ['dpkg-deb', '-f', deb, 'Version'], check=True,
+            stdout=subprocess.PIPE, encoding=sys.stdout.encoding
+        ).stdout.strip()
+        deb_basename_match = re.match(
+            DEB_BASENAME_RE.format(
+                arch=arch, package=package, version=version),
+            os.path.splitext(os.path.basename(deb))[0])
+        dist = deb_basename_match.group(2)
+        dists.setdefault(dist, {}).setdefault(arch, []).append(deb)
+    return dists
+
+
+def main():
+    """
+    Make apt repositories from *.deb's separated by architecture and component.
+    """
+    return collect_dists_archs()
+
+
+if __name__ == '__main__':
+    pprint.pprint(main())
