@@ -8,6 +8,9 @@ import os
 import re
 import pprint
 import subprocess
+import logging
+
+logger = logging.getLogger(os.path.splitext(os.path.basename(__file__))[0])
 
 DEB_BASENAME_RE = r'{package}([-_\.](?P<dist>.+)|)_{version}_{arch}'
 
@@ -52,8 +55,22 @@ def main():
     """
     Make apt repositories from *.deb's separated by architecture and component.
     """
-    return collect_dists_archs()
+    dists = collect_dists_archs()
+    for dist, archs in dists.items():
+        path = 'apt'
+        if dist is not None:
+            path = os.path.join(path, dist)
+        for arch, debs in archs.items():
+            arch_path = os.path.join(path, arch)
+            os.makedirs(arch_path, exist_ok=True)
+            packages = open(os.path.join(arch_path, 'Packages'), 'w')
+            for deb in debs:
+                logger.info('Writing %r', packages.name)
+                subprocess.run(
+                    ['dpkg-scanpackages', '-m', deb, '/dev/null'], check=True,
+                    stdout=packages)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
     pprint.pprint(main())
