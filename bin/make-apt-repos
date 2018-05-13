@@ -6,13 +6,20 @@ Make apt repositories from *.deb's separated by architecture and component.
 import sys
 import os
 import re
-import pprint
 import subprocess
+import shutil
 import logging
+import argparse
 
 logger = logging.getLogger(os.path.splitext(os.path.basename(__file__))[0])
 
 DEB_BASENAME_RE = r'{package}([-_\.](?P<dist>.+)|)_{version}_{arch}'
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument(
+    'user-id', help='The GPG user ID of the key to use for signing')
+parser.add_argument(
+    'pub-key', help='The path to the exported GPG public key')
 
 
 def collect_dists_archs(dir=os.curdir):
@@ -51,7 +58,7 @@ def collect_dists_archs(dir=os.curdir):
     return dists
 
 
-def main():
+def main(user_id, pub_key):
     """
     Make apt repositories from *.deb's separated by architecture and component.
     """
@@ -63,14 +70,35 @@ def main():
         for arch, debs in archs.items():
             arch_path = os.path.join(path, arch)
             os.makedirs(arch_path, exist_ok=True)
-            packages = open(os.path.join(arch_path, 'Packages'), 'w')
-            for deb in debs:
-                logger.info('Writing %r', packages.name)
-                subprocess.run(
-                    ['dpkg-scanpackages', '-m', deb, '/dev/null'], check=True,
-                    stdout=packages)
 
+            with open(os.path.join(arch_path, 'Packages'), 'w') as packages:
+                for deb in debs:
+                    logger.info('Writing %r', packages.name)
+                    subprocess.run(
+                        ['dpkg-scanpackages', '-m', deb, '/dev/null'],
+                        check=True, stdout=packages)
+
+            with open(os.path.join(arch_path, 'Release'), 'w') as release:
+                logger.info('Writing %r', release.name)
+                subprocess.run(
+                    ['apt-ftparchive', 'release', arch_path],
+                    check=True, stdout=release)
+            in_release_path = os.path.join(arch_path, 'InRelease')
+            logger.info('Writing %r', in_release_path)
+            subprocess.run(
+                ['gpg', '-u', user_id, '--clearsign',
+                 '-o', in_release_path, release.name], check=True)
+            release_gpg_path = os.path.join(arch_path, 'Release.gpg')
+            logger.info('Writing %r', release_gpg_path)
+            subprocess.run(
+                ['gpg', '-u', user_id, '-abs',
+                 '-o', release_gpg_path, release.name], check=True)
+
+            pub_key_path = os.path.join(arch_path, os.path.basename(pub_key))
+            logger.info('Copying %r', pub_key_path)
+            subprocess.run(['cp', pub_key, pub_key_path], check=True)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    pprint.pprint(main())
+    args = parser.parse_args()
+    main(getattr(args, 'user-id'), getattr(args, 'pub-key'))
