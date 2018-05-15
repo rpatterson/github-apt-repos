@@ -32,4 +32,4 @@ download-releases: $(BIN_WGET) .github-repo.path
 
 
 ## Makefile administrivia
-.PHONY: build download-releases
+.PHONY: build download-releases clean
