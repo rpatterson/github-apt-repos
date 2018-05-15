@@ -28,7 +28,7 @@ main() {
     read gh_repo_path
 
     # TODO replace with GitHub API usage
-    $DEBUG wget -r -nH --cut-dirs=2 -e robots=off -c \
+    $DEBUG wget -r -nH --cut-dirs=3 -e robots=off -c \
 	   -l 1 -A deb "$(gh_get_latest_release_url "$gh_repo_path")"
 }
 

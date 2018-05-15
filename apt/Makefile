@@ -8,7 +8,8 @@ BIN_FTPARCHIVE = $(shell which apt-ftparchive)
 PKGS = $(BIN_SCANPKGS) $(BIN_GPG) $(BIN_FTPARCHIVE)
 
 # Get the GitHub user and repo path from the top
-GH_REPO_PATH = $(shell cat ../../../.github-repo.path)
+ifneq ("$(wildcard ../.github-repo.path)","")
+GH_REPO_PATH = $(shell cat ../.github-repo.path)
 GH_USER = $(dir $(GH_REPO_PATH))
 # Strip the trailing slash
 GH_USER ::= $(GH_USER:%/=%)
@@ -17,14 +18,14 @@ GH_REPO = $(notdir $(GH_REPO_PATH))
 # Form a GPG user id specific to the repo
 GPG_USER_ID = $(GH_REPO) $(GH_USER) <$(GH_USER)+$(GH_REPO)@github.com>
 GPG_PUB_KEY = $(GH_USER)-$(GH_REPO).gpg.pub
-
+endif
 
 ## Top level targets
 
 build: $(BIN_SCANPKGS) $(BIN_FTPARCHIVE) $(BIN_GPG) $(GPG_PUB_KEY)
 # Generate the apt repos from the debs
-	cd .. && ../../bin/make-apt-repos \
-		"$(GPG_USER_ID)" "apt/$(GPG_PUB_KEY)"
+	../bin/make-apt-repos  ../download \
+		"$(GPG_USER_ID)" "$(GPG_PUB_KEY)"
 
 clean:
 	rm -rf !(Makefile)

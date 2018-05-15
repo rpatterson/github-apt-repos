@@ -17,12 +17,14 @@ DEB_BASENAME_RE = r'{package}([-_\.](?P<dist>.+)|)_{version}_{arch}'
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument(
+    'download-dir', help='The directory containing the *.deb files')
+parser.add_argument(
     'user-id', help='The GPG user ID of the key to use for signing')
 parser.add_argument(
     'pub-key', help='The path to the exported GPG public key')
 
 
-def collect_dists_archs(dir=os.curdir):
+def collect_dists_archs(download_dir=os.curdir):
     """
     Group packages by dist and architecture.
 
@@ -33,7 +35,7 @@ def collect_dists_archs(dir=os.curdir):
     dists = {}
     # TODO Use subprocess.Popen to stream results for large collections
     for deb in subprocess.run(
-            ['find', '.', '-iname', '*.deb'],
+            ['find', download_dir, '-iname', '*.deb'],
             check=True, stdout=subprocess.PIPE,
             encoding=sys.stdout.encoding
     ).stdout.strip().split('\n'):
@@ -58,51 +60,65 @@ def collect_dists_archs(dir=os.curdir):
     return dists
 
 
-def main(user_id, pub_key):
+def main(download_dir, user_id, pub_key):
     """
     Make apt repositories from *.deb's separated by architecture and component.
     """
-    dists = collect_dists_archs()
+    dists = collect_dists_archs(download_dir)
     for dist, archs in dists.items():
-        path = 'apt'
-        if dist is not None:
-            path = os.path.join(path, dist)
         for arch, debs in archs.items():
             # Make a dist+arch specific directory
-            arch_path = os.path.join(path, arch)
-            os.makedirs(arch_path, exist_ok=True)
+            if dist is not None:
+                arch_dir = dist + '-' + arch
+            else:
+                arch_dir = arch
+            apt_path = os.path.join(arch_dir, 'apt')
+            os.makedirs(apt_path, exist_ok=True)
 
-            # Add each deb for this dist+arch to Packages
-            with open(os.path.join(arch_path, 'Packages'), 'w') as packages:
-                for deb in debs:
-                    logger.info('Writing %r', packages.name)
-                    subprocess.run(
-                        ['dpkg-scanpackages', '-m', deb, '/dev/null'],
-                        check=True, stdout=packages)
+            # Link the debs for this dist+arch into a duplicate hierarchy:
+            # Workaround the fact that dpkg-scanpackages doesn't
+            # produce relative paths when given individual *.deb files
+            # nor can we keep it from including other dist+arch *.deb
+            # files if they're in the same hierarchy.
+            for deb in debs:
+                deb_link = os.path.join(
+                    arch_dir, os.path.relpath(deb, download_dir))
+                os.makedirs(os.path.dirname(deb_link), exist_ok=True)
+                if not os.path.exists(deb_link):
+                    os.link(deb, deb_link)
+
+            # Generate the Packages file
+            with open(os.path.join(apt_path, 'Packages'), 'w') as packages:
+                logger.info('Writing %r', packages.name)
+                subprocess.run(
+                    ['dpkg-scanpackages', '-m', os.pardir, '/dev/null'],
+                    cwd=apt_path, check=True, stdout=packages)
 
             # Make and sign the Release files
-            with open(os.path.join(arch_path, 'Release'), 'w') as release:
+            with open(os.path.join(apt_path, 'Release'), 'w') as release:
                 logger.info('Writing %r', release.name)
                 subprocess.run(
-                    ['apt-ftparchive', 'release', arch_path],
+                    ['apt-ftparchive', 'release', apt_path],
                     check=True, stdout=release)
-            in_release_path = os.path.join(arch_path, 'InRelease')
+            in_release_path = os.path.join(apt_path, 'InRelease')
             logger.info('Writing %r', in_release_path)
             subprocess.run(
                 ['gpg', '-u', user_id, '--clearsign',
                  '-o', in_release_path, release.name], check=True)
-            release_gpg_path = os.path.join(arch_path, 'Release.gpg')
+            release_gpg_path = os.path.join(apt_path, 'Release.gpg')
             logger.info('Writing %r', release_gpg_path)
             subprocess.run(
                 ['gpg', '-u', user_id, '-abs',
                  '-o', release_gpg_path, release.name], check=True)
 
             # Copy the public key
-            pub_key_path = os.path.join(arch_path, os.path.basename(pub_key))
+            pub_key_path = os.path.join(apt_path, os.path.basename(pub_key))
             logger.info('Copying %r', pub_key_path)
             subprocess.run(['cp', pub_key, pub_key_path], check=True)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     args = parser.parse_args()
-    main(getattr(args, 'user-id'), getattr(args, 'pub-key'))
+    main(
+        getattr(args, 'download-dir'),
+        getattr(args, 'user-id'), getattr(args, 'pub-key'))
