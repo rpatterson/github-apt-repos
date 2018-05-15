@@ -2,9 +2,7 @@
 
 SHELL = /usr/bin/env bash -o pipefail -O extglob
 
-BIN_GIT = $(shell which git)
-BIN_WGET = $(shell which wget)
-PKGS = $(BIN_GIT) $(BIN_WGET)
+PKGS = /usr/bin/git /usr/bin/wget
 
 
 ## Top level targets
@@ -23,11 +21,11 @@ clean:
 $(PKGS):
 	sudo apt install git wget dpkg-dev apt-utils gpg
 
-.github-repo.path: $(BIN_GIT)
+.github-repo.path: /usr/bin/git
 	./bin/get-github-repo-path >.github-repo.path
 
 # Download the latest releases
-download-releases: $(BIN_WGET) .github-repo.path
+download-releases: /usr/bin/wget .github-repo.path
 	./bin/download-latest-debs <.github-repo.path
 
 

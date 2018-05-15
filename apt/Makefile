@@ -2,10 +2,7 @@
 
 SHELL=/usr/bin/env bash -o pipefail -O extglob
 
-BIN_SCANPKGS = $(shell which dpkg-scanpackages)
-BIN_GPG = $(shell which gpg)
-BIN_FTPARCHIVE = $(shell which apt-ftparchive)
-PKGS = $(BIN_SCANPKGS) $(BIN_GPG) $(BIN_FTPARCHIVE)
+PKGS = /usr/bin/dpkg-scanpackages /usr/bin/gpg /usr/bin/apt-ftparchive
 
 # Get the GitHub user and repo path from the top
 ifneq ("$(wildcard ../.github-repo.path)","")
@@ -22,7 +19,7 @@ endif
 
 ## Top level targets
 
-build: $(BIN_SCANPKGS) $(BIN_FTPARCHIVE) $(BIN_GPG) $(GPG_PUB_KEY)
+build: /usr/bin/dpkg-scanpackages /usr/bin/apt-ftparchive /usr/bin/gpg $(GPG_PUB_KEY)
 # Generate the apt repos from the debs
 	../bin/make-apt-repos  ../download \
 		"$(GPG_USER_ID)" "$(GPG_PUB_KEY)"
@@ -36,7 +33,7 @@ clean:
 $(PKGS):
 	sudo apt install dpkg-dev apt-utils gpg
 
-$(GPG_PUB_KEY): $(BIN_GPG)
+$(GPG_PUB_KEY): /usr/bin/gpg
 # Generate a new key if we don't already have a secret key for the ID
 	gpg --list-secret-keys "$(GPG_USER_ID)" || \
 		gpg --quick-generate-key "$(GPG_USER_ID)"
