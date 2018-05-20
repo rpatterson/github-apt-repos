@@ -18,6 +18,8 @@ try:
 except ImportError:
     from urllib import urlretrieve  # BBB Python 2
 
+from apt import debfile
+
 import gnupg
 
 import github
@@ -94,12 +96,10 @@ def get_deb_dist_arch(deb, basename_re=DEB_BASENAME_RE):
     The distribution is taken from what ever is left when the
     architecture, package name, and version are removed.
     """
-    arch = subprocess.check_output(
-        ['dpkg-deb', '-f', deb, 'Architecture']).strip()
-    package = subprocess.check_output(
-        ['dpkg-deb', '-f', deb, 'Package']).strip()
-    version = subprocess.check_output(
-        ['dpkg-deb', '-f', deb, 'Version']).strip()
+    deb_pkg = debfile.DebPackage(deb)
+    arch = deb_pkg['Architecture']
+    package = deb_pkg['Package']
+    version = deb_pkg['Version']
     deb_basename_match = re.match(
         DEB_BASENAME_RE.format(
             arch=arch, package=package, version=version),
