@@ -10,6 +10,7 @@ import tempfile
 import shutil
 import logging
 import subprocess
+import mimetypes
 import email.utils
 import argparse
 
@@ -29,6 +30,12 @@ logger = logging.getLogger('github-apt-repos')
 DEB_BASENAME_RE = r'{package}([-_\.](?P<dist>.+)|)_{version}_{arch}'
 GH_ORIGIN_URL_RE = re.compile(
     r'^(https://github.com/|git@github.com:)(?P<full_name>.+?)(.git|)$')
+# Map APT repo files without extensions to their closes match
+APT_EXTENSIONS = {
+    'Packages': '.txt',
+    'Release': '.txt',
+    'InRelease': '.sig',
+}
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument(
@@ -38,7 +45,11 @@ parser.add_argument(
 parser.add_argument(
     '--apt-dir', dest='apt_dir',
     help='The directory in which to download the `*.deb` files '
-    'and construct APT repositories')
+    'and construct APT repositories, defaults to a temporary directory')
+parser.add_argument(
+    '--github-apt-repo', dest='gh_apt_repo',
+    help="If given a GitHub repoitory's `username/repo` path, "
+    "the APT repositories will be uploaded to `apt-dist-arch` releases")
 
 gpg_group = parser.add_mutually_exclusive_group()
 gpg_group.add_argument(
@@ -194,9 +205,46 @@ def get_github_repo(api, repo_dir=os.curdir, origin_url_re=GH_ORIGIN_URL_RE):
     return api.get_repo(origin_match.group('full_name'))
 
 
+def release_apt_repo(repo, apt_dir, dist_arch_dir):
+    """
+    Upload the APT repository as a GitHub release.
+    """
+    dist_arch = os.path.relpath(dist_arch_dir, apt_dir)
+    tag = 'apt-' + dist_arch.replace('/', '-')
+    try:
+        release = repo.get_release(tag)
+    except github.UnknownObjectException:
+        name = 'Debian/Ubuntu APT repository for {0}'.format(dist_arch)
+        logger.info(
+            'Creating new release: %s', tag)
+        # TODO message
+        release = repo.create_git_release(tag, name, message=name)
+
+    assets = {
+        asset.name: asset for asset in release.get_assets()}
+    for asset_name in os.listdir(dist_arch_dir):
+        asset = assets.get(asset_name)
+        if asset is not None:
+            logger.info(
+                'Deleting existing release asset: %s',
+                asset.browser_download_url)
+            asset.delete_asset()
+
+        path = os.path.join(dist_arch_dir, asset_name)
+        content_type, encoding = mimetypes.guess_type(asset_name)
+        if content_type is None:
+            content_type, encoding = mimetypes.guess_type(
+                asset_name + APT_EXTENSIONS.get(asset_name, '.txt'))
+
+        logger.info(
+            'Uploading release asset: %s', path)
+        asset = release.upload_asset(
+            path, label=asset_name, content_type=content_type)
+
+
 def main():
     """
-    Download all `*.deb` assets for the release and built APT repos.
+    Download all release deb assets, build and upload APT repos.
     """
     logging.basicConfig(level=logging.INFO)
     args = parser.parse_args()
@@ -248,8 +296,16 @@ def main():
                 gpg_pub_key_opened.write(gpg_pub_key)
 
         download_release_debs(repo, apt_dir=apt_dir)
-        for dist_arch_dir in group_debs(apt_dir=apt_dir):
+
+        dist_arch_dirs = group_debs(apt_dir=apt_dir)
+        for dist_arch_dir in dist_arch_dirs:
             make_apt_repo(gpg, gpg_user_id, gpg_pub_key_src, dist_arch_dir)
+
+        if args.gh_apt_repo:
+            for dist_arch_dir in dist_arch_dirs:
+                release_apt_repo(
+                    api.get_repo(args.gh_apt_repo), apt_dir, dist_arch_dir)
+
     finally:
         if args.apt_dir is None:
             shutil.rmtree(apt_dir, ignore_errors=True)
