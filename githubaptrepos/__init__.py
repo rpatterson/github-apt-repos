@@ -238,15 +238,15 @@ def main():
     if apt_dir is None:
         apt_dir = tempfile.mkdtemp(
             prefix='{0}-{1}-apt'.format(user_name, repo_name))
-
-    gpg_pub_key_src = os.path.join(
-        apt_dir, '{0}-{1}.gpg.pub'.format(user_name, repo_name))
-    if not os.path.exists(gpg_pub_key_src):
-        logger.info('Writing public key: %s', gpg_pub_key_src)
-        with open(gpg_pub_key_src, 'w') as gpg_pub_key_opened:
-            gpg_pub_key_opened.write(gpg_pub_key)
-
     try:
+
+        gpg_pub_key_src = os.path.join(
+            apt_dir, '{0}-{1}.pub.key'.format(user_name, repo_name))
+        if not os.path.exists(gpg_pub_key_src):
+            logger.info('Writing public key: %s', gpg_pub_key_src)
+            with open(gpg_pub_key_src, 'w') as gpg_pub_key_opened:
+                gpg_pub_key_opened.write(gpg_pub_key)
+
         download_release_debs(repo, apt_dir=apt_dir)
         for dist_arch_dir in group_debs(apt_dir=apt_dir):
             make_apt_repo(gpg, gpg_user_id, gpg_pub_key_src, dist_arch_dir)
