@@ -138,7 +138,7 @@ def group_debs(apt_dir=os.curdir, basename_re=DEB_BASENAME_RE):
     return dist_arch_dirs
 
 
-def make_apt_repo(gpg_user_id, gpg_pub_key_src, dist_arch_dir=os.curdir):
+def make_apt_repo(gpg, gpg_user_id, gpg_pub_key_src, dist_arch_dir=os.curdir):
     """
     Make an APT repository from a directory containing `*.deb` files.
 
@@ -160,16 +160,17 @@ def make_apt_repo(gpg_user_id, gpg_pub_key_src, dist_arch_dir=os.curdir):
         subprocess.check_call(
             ['apt-ftparchive', 'release', dist_arch_dir],
             stdout=release)
-        in_release_path = os.path.join(dist_arch_dir, 'InRelease')
-        logger.info('Writing %r', in_release_path)
-        subprocess.check_call(
-            ['gpg', '-u', gpg_user_id, '--clearsign',
-             '-o', in_release_path, release.name])
-        release_gpg_path = os.path.join(dist_arch_dir, 'Release.gpg')
-        logger.info('Writing %r', release_gpg_path)
-        subprocess.check_call(
-            ['gpg', '-u', gpg_user_id, '-abs',
-             '-o', release_gpg_path, release.name])
+    in_release_path = os.path.join(dist_arch_dir, 'InRelease')
+    release_gpg_path = os.path.join(dist_arch_dir, 'Release.gpg')
+    with open(os.path.join(dist_arch_dir, 'Release')) as release:
+        logger.info('Signing %r', in_release_path)
+        gpg.sign_file(release, keyid=gpg_user_id, output=in_release_path)
+
+        release.seek(0)
+        logger.info('Signing %r', release_gpg_path)
+        gpg.sign_file(
+            release, keyid=gpg_user_id,
+            clearsign=False, detach=True, output=release_gpg_path)
 
     # Link the public key
     gpg_pub_key_dst = os.path.join(
@@ -248,7 +249,7 @@ def main():
     try:
         download_release_debs(repo, apt_dir=apt_dir)
         for dist_arch_dir in group_debs(apt_dir=apt_dir):
-            make_apt_repo(gpg_user_id, gpg_pub_key_src, dist_arch_dir)
+            make_apt_repo(gpg, gpg_user_id, gpg_pub_key_src, dist_arch_dir)
     finally:
         if args.apt_dir is None:
             shutil.rmtree(apt_dir, ignore_errors=True)
