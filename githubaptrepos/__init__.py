@@ -28,10 +28,14 @@ import github3
 
 logger = logging.getLogger('github-apt-repos')
 
+# The regular expression used to identify the dist of a `*.deb` package
+# package-name-dist_version_arch.deb
 DEB_BASENAME_RE = r'{package}([-_\.](?P<dist>.+)|)_{version}_{arch}'
+
 GH_ORIGIN_URL_RE = re.compile(
     r'^(https://github.com/|git@github.com:)'
     r'(?P<gh_user>.+)/(?P<gh_repo>.+?)(.git|)$')
+
 # Map APT repo files without extensions to their closes match
 APT_EXTENSIONS = {
     'Packages': '.txt',
@@ -71,21 +75,22 @@ gh_group.add_argument(
     help='Your GitHub login user name')
 
 
-def download_release_debs(repo, release_id=None, apt_dir=os.curdir):
+def download_release_debs(repo, tag=None, apt_dir=os.curdir):
     """
     Download all the `*.deb` assets from the release.
 
     Defaults to the latest release.
     """
-    if release_id is None:
+    if tag is None:
         release = repo.latest_release()
     else:
-        release = repo.release_from_tag(release_id)
+        release = repo.release_from_tag(tag)
 
     assets = []
     for asset in release.assets():
         name, ext = os.path.splitext(asset.name)
         if ext.lower() != '.deb':
+            # Ignore all assets that aren't `*.deb` packages
             continue
 
         dest = os.path.join(apt_dir, asset.name)
@@ -107,7 +112,9 @@ def get_deb_dist_arch(deb, basename_re=DEB_BASENAME_RE):
     Return the distribution and architecture for a `*.deb` file.
 
     The distribution is taken from what ever is left when the
-    architecture, package name, and version are removed.
+    architecture, package name, and version are removed:
+
+    package-name-dist_version_arch.deb
     """
     deb_pkg = debfile.DebPackage(deb)
     arch = deb_pkg['Architecture']
@@ -212,26 +219,31 @@ def release_apt_repo(repo, apt_dir, dist_arch_dir):
     """
     Upload the APT repository as a GitHub release.
     """
+    # Convert the dist+arch specific APT repo path to a GH-friendly tag
     dist_arch = os.path.relpath(dist_arch_dir, apt_dir)
     tag = 'apt-' + dist_arch.replace('/', '-')
+
+    # Get or create the corresponding GH release
     try:
         release = repo.release_from_tag(tag)
     except github3.exceptions.NotFoundError:
         name = 'Debian/Ubuntu APT repository for {0}'.format(dist_arch)
-        logger.info(
-            'Creating new release: %s', tag)
+        logger.info('Creating new release: %s', tag)
         # TODO message
         release = repo.create_release(tag_name=tag, name=name, body=name)
 
+    # Add or update (delete and re-add) the assets
     assets = {asset.name: asset for asset in release.assets()}
     for asset_name in os.listdir(dist_arch_dir):
         asset = assets.get(asset_name)
         if asset is not None:
+            # Delete any assets that correspond to one in the repo
             logger.info(
                 'Deleting existing release asset: %s',
                 asset.browser_download_url)
             asset.delete()
 
+        # Guess the most appropriate MIME type
         path = os.path.join(dist_arch_dir, asset_name)
         content_type, encoding = mimetypes.guess_type(asset_name)
         if content_type is None:
@@ -253,6 +265,7 @@ def main():
     logging.basicConfig(level=logging.INFO)
     args = parser.parse_args()
 
+    # Login to the GitHub API
     if args.gh_access_token:
         api = github3.login(token=args.gh_access_token)
     else:
@@ -260,7 +273,6 @@ def main():
         api = github3.login(username=args.gh_user, password=password)
 
     repo = get_github_repo(api, args.repo_dir)
-    user_name, repo_name = repo.full_name.split('/', 1)
 
     gpg = gnupg.GPG()
     gpg_pub_key = args.gpg_pub_key
@@ -270,7 +282,7 @@ def main():
             gpg_user_id = (
                 '{repo_name} {user_name} '
                 '<{user_name}+{repo_name}@github.com>'.format(
-                    user_name=user_name, repo_name=repo_name))
+                    user_name=repo.owner.login, repo_name=repo.name))
 
         gpg_pub_key = gpg.export_keys(gpg_user_id)
         if not gpg_pub_key:
@@ -289,11 +301,11 @@ def main():
     apt_dir = args.apt_dir
     if apt_dir is None:
         apt_dir = tempfile.mkdtemp(
-            prefix='{0}-{1}-apt'.format(user_name, repo_name))
+            prefix='{0}-{1}-apt'.format(repo.owner.login, repo.name))
     try:
 
         gpg_pub_key_src = os.path.join(
-            apt_dir, '{0}-{1}.pub.key'.format(user_name, repo_name))
+            apt_dir, '{0}-{1}.pub.key'.format(repo.owner.login, repo.name))
         if not os.path.exists(gpg_pub_key_src):
             logger.info('Writing public key: %s', gpg_pub_key_src)
             with open(gpg_pub_key_src, 'w') as gpg_pub_key_opened:
