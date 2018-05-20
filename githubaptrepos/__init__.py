@@ -313,12 +313,17 @@ def main():
     gpg = gnupg.GPG()
     gpg_pub_key = args.gpg_pub_key
     gpg_user_id = args.gpg_user_id
+    if args.gh_apt_repo:
+        gpg_user_name, gpg_repo_name = args.gh_apt_repo.split('/', 1)
+    else:
+        gpg_user_name = repo.owner.login
+        gpg_repo_name = repo.name
     if gpg_pub_key is None:
         if gpg_user_id is None:
             gpg_user_id = (
                 '{repo_name} {user_name} '
                 '<{user_name}+{repo_name}@github.com>'.format(
-                    user_name=repo.owner.login, repo_name=repo.name))
+                    user_name=gpg_user_name, repo_name=gpg_repo_name))
 
         gpg_pub_key = gpg.export_keys(gpg_user_id)
         if not gpg_pub_key:
@@ -341,7 +346,7 @@ def main():
     try:
 
         gpg_pub_key_src = os.path.join(
-            apt_dir, '{0}-{1}.pub.key'.format(repo.owner.login, repo.name))
+            apt_dir, '{0}-{1}.pub.key'.format(gpg_user_name, gpg_repo_name))
         if not os.path.exists(gpg_pub_key_src):
             logger.info('Writing public key: %s', gpg_pub_key_src)
             with open(gpg_pub_key_src, 'w') as gpg_pub_key_opened:
