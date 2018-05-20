@@ -337,7 +337,7 @@ def main():
     apt_dir = args.apt_dir
     if apt_dir is None:
         apt_dir = tempfile.mkdtemp(
-            prefix='{0}-{1}-apt'.format(repo.owner.login, repo.name))
+            prefix='apt-{0}-{1}'.format(repo.owner.login, repo.name))
     try:
 
         gpg_pub_key_src = os.path.join(
