@@ -23,13 +23,15 @@ from apt import debfile
 
 import gnupg
 
-import github
+import github3
+
 
 logger = logging.getLogger('github-apt-repos')
 
 DEB_BASENAME_RE = r'{package}([-_\.](?P<dist>.+)|)_{version}_{arch}'
 GH_ORIGIN_URL_RE = re.compile(
-    r'^(https://github.com/|git@github.com:)(?P<full_name>.+?)(.git|)$')
+    r'^(https://github.com/|git@github.com:)'
+    r'(?P<gh_user>.+)/(?P<gh_repo>.+?)(.git|)$')
 # Map APT repo files without extensions to their closes match
 APT_EXTENSIONS = {
     'Packages': '.txt',
@@ -76,12 +78,12 @@ def download_release_debs(repo, release_id=None, apt_dir=os.curdir):
     Defaults to the latest release.
     """
     if release_id is None:
-        release = repo.get_latest_release()
+        release = repo.latest_release()
     else:
-        release = repo.get_release(release_id)
+        release = repo.release_from_tag(release_id)
 
     assets = []
-    for asset in release.get_assets():
+    for asset in release.assets():
         name, ext = os.path.splitext(asset.name)
         if ext.lower() != '.deb':
             continue
@@ -202,7 +204,8 @@ def get_github_repo(api, repo_dir=os.curdir, origin_url_re=GH_ORIGIN_URL_RE):
         raise ValueError(
             'Did not recognize origin remote URL '
             'as a GitHub remote: {0}'.format(origin_url))
-    return api.get_repo(origin_match.group('full_name'))
+    return api.repository(
+        origin_match.group('gh_user'), origin_match.group('gh_repo'))
 
 
 def release_apt_repo(repo, apt_dir, dist_arch_dir):
@@ -212,23 +215,22 @@ def release_apt_repo(repo, apt_dir, dist_arch_dir):
     dist_arch = os.path.relpath(dist_arch_dir, apt_dir)
     tag = 'apt-' + dist_arch.replace('/', '-')
     try:
-        release = repo.get_release(tag)
-    except github.UnknownObjectException:
+        release = repo.release_from_tag(tag)
+    except github3.exceptions.NotFoundError:
         name = 'Debian/Ubuntu APT repository for {0}'.format(dist_arch)
         logger.info(
             'Creating new release: %s', tag)
         # TODO message
-        release = repo.create_git_release(tag, name, message=name)
+        release = repo.create_release(tag_name=tag, name=name, body=name)
 
-    assets = {
-        asset.name: asset for asset in release.get_assets()}
+    assets = {asset.name: asset for asset in release.assets()}
     for asset_name in os.listdir(dist_arch_dir):
         asset = assets.get(asset_name)
         if asset is not None:
             logger.info(
                 'Deleting existing release asset: %s',
                 asset.browser_download_url)
-            asset.delete_asset()
+            asset.delete()
 
         path = os.path.join(dist_arch_dir, asset_name)
         content_type, encoding = mimetypes.guess_type(asset_name)
@@ -238,8 +240,10 @@ def release_apt_repo(repo, apt_dir, dist_arch_dir):
 
         logger.info(
             'Uploading release asset: %s', path)
-        asset = release.upload_asset(
-            path, label=asset_name, content_type=content_type)
+        with open(path) as asset_opened:
+            asset = release.upload_asset(
+                content_type=content_type, name=asset_name,
+                asset=asset_opened)
 
 
 def main():
@@ -250,10 +254,10 @@ def main():
     args = parser.parse_args()
 
     if args.gh_access_token:
-        api = github.Github(args.gh_access_token)
+        api = github3.login(token=args.gh_access_token)
     else:
         password = input('GitHub login password:')
-        api = github.Github(args.gh_user, password)
+        api = github3.login(username=args.gh_user, password=password)
 
     repo = get_github_repo(api, args.repo_dir)
     user_name, repo_name = repo.full_name.split('/', 1)
@@ -295,6 +299,7 @@ def main():
             with open(gpg_pub_key_src, 'w') as gpg_pub_key_opened:
                 gpg_pub_key_opened.write(gpg_pub_key)
 
+        # TODO Support using locally built debs
         download_release_debs(repo, apt_dir=apt_dir)
 
         dist_arch_dirs = group_debs(apt_dir=apt_dir)
@@ -304,7 +309,8 @@ def main():
         if args.gh_apt_repo:
             for dist_arch_dir in dist_arch_dirs:
                 release_apt_repo(
-                    api.get_repo(args.gh_apt_repo), apt_dir, dist_arch_dir)
+                    api.repository(*args.gh_apt_repo.split('/', 1)),
+                    apt_dir, dist_arch_dir)
 
     finally:
         if args.apt_dir is None:
