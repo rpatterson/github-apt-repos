@@ -18,7 +18,8 @@ setup(name='github-apt-repos',
       include_package_data=True,
       zip_safe=False,
       install_requires=[
-          # -*- Extra requirements: -*-
+          'python-gnupg',
+          'PyGithub',
       ],
       entry_points="""
       # -*- Entry points: -*-

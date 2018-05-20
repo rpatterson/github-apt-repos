@@ -1,4 +1,2 @@
-/.github-repo.path
-/latest
-/latest.*
-/download
+/.venv
+/apt
