@@ -233,7 +233,7 @@ def main():
     else:
         gpg_pub_key, = gpg.scan_keys(gpg_pub_key)
         gpg_user_id = gpg_pub_key['user-id']
-    
+
     apt_dir = args.apt_dir
     if apt_dir is None:
         apt_dir = tempfile.mkdtemp(
