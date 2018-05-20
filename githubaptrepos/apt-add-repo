@@ -1,0 +1,16 @@
+#!/bin/sh
+#
+# Add APT repository, add the signing GPG key, and update the package DB
+
+set -xe
+
+
+main() {{
+    curl -L {base_download_url}/{basename}.pub.key | sudo apt-key add -
+    sudo curl -L -o /etc/apt/sources.list.d/{basename}.list \
+	 {base_download_url}/{basename}.list
+    sudo apt update
+}}
+
+
+main "$@"

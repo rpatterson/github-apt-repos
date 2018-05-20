@@ -4,6 +4,7 @@ Create Debian/Ubuntu apt repositories from GitHub releases.
 """
 
 import os
+import stat
 import glob
 import re
 import tempfile
@@ -41,6 +42,7 @@ APT_EXTENSIONS = {
     'Packages': '.txt',
     'Release': '.txt',
     'InRelease': '.sig',
+    'apt-add-repo': '.sh',
 }
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -222,15 +224,49 @@ def release_apt_repo(repo, apt_dir, dist_arch_dir):
     # Convert the dist+arch specific APT repo path to a GH-friendly tag
     dist_arch = os.path.relpath(dist_arch_dir, apt_dir)
     tag = 'apt-' + dist_arch.replace('/', '-')
+    base_download_url = 'https://github.com/{0}/releases/download/{1}'.format(
+        repo.full_name, tag)
+    user_repo_basename = repo.owner.login + '-' + repo.name
+
+    # Generate the APT repo sources.list
+    apt_add_path = os.path.join(dist_arch_dir, user_repo_basename + '.list')
+    with open(os.path.join(
+            os.path.dirname(__file__), 'sources.list')) as apt_add_repo_tmpl:
+        with open(apt_add_path, 'w') as apt_add_repo:
+            logger.info(
+                'Writing the APT repository source: %r', apt_add_path)
+            apt_add_repo.write(
+                apt_add_repo_tmpl.read().format(
+                    base_download_url=base_download_url,
+                    basename=user_repo_basename))
+
+    # Generate the APT repo install script
+    apt_add_path = os.path.join(dist_arch_dir, 'apt-add-repo')
+    with open(os.path.join(
+            os.path.dirname(__file__), 'apt-add-repo')) as apt_add_repo_tmpl:
+        with open(apt_add_path, 'w') as apt_add_repo:
+            logger.info(
+                'Writing the APT repository install script: %r', apt_add_path)
+            apt_add_repo.write(
+                apt_add_repo_tmpl.read().format(
+                    base_download_url=base_download_url,
+                    basename=user_repo_basename))
+    os.chmod(
+        apt_add_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR |
+        stat.S_IRGRP | stat.S_IWGRP | stat.S_IXGRP | stat.S_IROTH |
+        stat.S_IXOTH)
 
     # Get or create the corresponding GH release
     try:
         release = repo.release_from_tag(tag)
     except github3.exceptions.NotFoundError:
         name = 'Debian/Ubuntu APT repository for {0}'.format(dist_arch)
+        with open(os.path.join(
+                os.path.dirname(__file__), 'release-body.md')) as body_opened:
+            # Generate the release body text
+            body = body_opened.read().format(repo=repo, tag=tag, name=name)
         logger.info('Creating new release: %s', tag)
-        # TODO message
-        release = repo.create_release(tag_name=tag, name=name, body=name)
+        release = repo.create_release(tag_name=tag, name=name, body=body)
 
     # Add or update (delete and re-add) the assets
     assets = {asset.name: asset for asset in release.assets()}
