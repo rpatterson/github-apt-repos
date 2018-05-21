@@ -54,20 +54,21 @@ parser.add_argument(
     '--apt-dir', dest='apt_dir',
     help='The directory in which to download the `*.deb` files '
     'and construct APT repositories, defaults to a temporary directory')
-parser.add_argument(
-    '--github-apt-repo', dest='gh_apt_repo',
-    help="If given a GitHub repoitory's `username/repo` path, "
-    "the APT repositories will be uploaded to `apt-dist-arch` releases")
 
 gpg_group = parser.add_mutually_exclusive_group()
 gpg_group.add_argument(
     '--gpg-pub-key', dest='gpg_pub_key',
     help='The path to an exported GPG public key '
-    'to sign the APT repository')
+    'of the private key with which to sign the APT repository')
 gpg_group.add_argument(
     '--gpg-user-id', dest='gpg_user_id',
-    help='The GPG `user-id` of the key to sign the APT repository')
+    help='The GPG `user-id` of the key to sign the APT repository with')
 
+parser.add_argument(
+    '--github-apt-repo', dest='gh_apt_repo',
+    help="If given a GitHub repoitory's `username/repo` path, "
+    "the APT repositories will be uploaded to `apt-dist-arch` releases "
+    "instead of the originating GitHub repository")
 gh_group = parser.add_mutually_exclusive_group(required=True)
 gh_group.add_argument(
     '--github-token', dest='gh_access_token',

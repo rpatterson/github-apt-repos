@@ -32,7 +32,9 @@ setup(name='github-apt-repos',
           'python-gnupg',
           'github3.py',
       ],
-      entry_points="""
-      # -*- Entry points: -*-
-      """,
+      entry_points={
+          'console_scripts': [
+              'github-apt-repos=githubaptrepos:main',
+          ],
+      },
       )
