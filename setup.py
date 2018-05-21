@@ -6,8 +6,7 @@ version = '0.1'
 setup(name='github-apt-repos',
       version=version,
       description="Host Debian/Ubuntu APT repositories on GitHub releases.",
-      long_description="""\
-""",
+      long_description=open('README.rst').read(),
       classifiers=[
           'Development Status :: 3 - Alpha',
           'Environment :: Console',
