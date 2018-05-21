@@ -6,7 +6,8 @@ set -xe
 
 
 main() {{
-    curl -L {base_download_url}/{basename}.pub.key | sudo apt-key add -
+    curl -L {base_download_url}/{basename}.pub.key |
+	sudo apt-key --keyring /etc/apt/trusted.gpg.d/{basename}.gpg add -
     sudo curl -L -o /etc/apt/sources.list.d/{basename}.list \
 	 {base_download_url}/{basename}.list
     sudo apt update
