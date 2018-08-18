@@ -52,8 +52,7 @@ def set_up_gpg_key(args, apt_repo=None, gpg=gpg):
                 logger.info(
                     'Public key not found for %r, generating a new key',
                     gpg_user_id)
-                name_real, name_email = email.utils.parseaddr(
-                    'From: ' + gpg_user_id)
+                name_real, name_email = email.utils.parseaddr(gpg_user_id)
                 generated = gpg.gen_key(
                     gpg.gen_key_input(
                         name_real=name_real, name_email=name_email))
