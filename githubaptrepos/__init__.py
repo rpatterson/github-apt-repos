@@ -5,6 +5,7 @@ Create Debian/Ubuntu apt repositories from GitHub releases.
 
 import os
 import tempfile
+import email.utils
 import shutil
 import logging
 
@@ -72,7 +73,7 @@ def main():
         gpg_pub_key_src = None
         if gpg_pub_key is not None:
             gpg_pub_key_basename = utils.quote_dotted(
-                gpg_user_id) + '.pub.key'
+                email.utils.parseaddr(gpg_user_id)[1]) + '.pub.key'
             gpg_pub_key_src = os.path.join(apt_dir, gpg_pub_key_basename)
             if not os.path.exists(gpg_pub_key_src):
                 logger.info('Writing public key: %s', gpg_pub_key_src)
