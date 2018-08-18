@@ -17,8 +17,11 @@ import argparse
 
 try:
     from urllib.request import urlretrieve
+    from urllib.parse import _ALWAYS_SAFE
 except ImportError:
     from urllib import urlretrieve  # BBB Python 2
+    from urllib import always_safe
+    _ALWAYS_SAFE = frozenset(always_safe)
 
 from apt import debfile
 
@@ -35,7 +38,7 @@ DEB_BASENAME_RE = r'{package}([-_\.](?P<dist>.+)|)_{version}_{arch}'
 
 GH_ORIGIN_URL_RE = re.compile(
     r'^(https://github.com/|git@github.com:)'
-    r'(?P<gh_user>.+)/(?P<gh_repo>.+?)(.git|)$')
+    r'(?P<gh_repo_path>(?P<gh_user>.+)/(?P<gh_repo>.+?))(.git|)$')
 
 # Map APT repo files without extensions to their closes match
 APT_EXTENSIONS = {
@@ -45,40 +48,66 @@ APT_EXTENSIONS = {
     'apt-add-repo': '.sh',
 }
 
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument(
-    '--repo-dir', dest='repo_dir', default=os.curdir,
-    help='The git checkout directory of the repository '
-    'whose releases to make an APT repository for')
+    '--deb-dir', dest='deb_dir', metavar='DIR',
+    help='The directory that contains the `*.deb` files, or into which '
+    'to download them (default: a temporary directory).')
 parser.add_argument(
-    '--apt-dir', dest='apt_dir',
-    help='The directory in which to download the `*.deb` files '
-    'and construct APT repositories, defaults to a temporary directory')
+    '--apt-dir', dest='apt_dir', metavar='DIR',
+    help='The directory in which to construct the `apt-dist-arch` APT '
+    'repositories, (default: `--deb-dir`).')
 
-gpg_group = parser.add_mutually_exclusive_group()
+gpg_group = parser.add_argument_group(
+    title='GnuPG Options',
+    description='Options controlling the GPG signing of the APT repository, '
+    'provide only one.').add_mutually_exclusive_group()
 gpg_group.add_argument(
     '--gpg-pub-key', dest='gpg_pub_key',
-    help='The path to an exported GPG public key '
-    'of the private key with which to sign the APT repository')
+    help='The path to an exported GPG public key of the private key with '
+    'which to sign the APT repository (default: if present, a previously '
+    'generated key based on the `--repo-dir` GitHub repository).')
 gpg_group.add_argument(
     '--gpg-user-id', dest='gpg_user_id',
-    help='The GPG `user-id` of the key to sign the APT repository with')
+    help='The GPG `user-id` of the key to sign the APT repository with '
+    '(default: generate a user ID from the `--repo-dir` '
+    'GitHub user/organization name and the repository name).')
 
-parser.add_argument(
-    '--github-apt-repo', dest='gh_apt_repo',
-    help="If given a GitHub repoitory's `username/repo` path, "
-    "the APT repositories will be uploaded to `apt-dist-arch` releases "
-    "instead of the originating GitHub repository")
-gh_group = parser.add_mutually_exclusive_group(required=True)
-gh_group.add_argument(
-    '--github-token', dest='gh_access_token',
+gh_group = parser.add_argument_group(
+    title='GitHub Options',
+    description='Options controlling the interactions with GitHub. '
+    'For automatic download of GitHub `*.deb` releases or uploading '
+    'the APT repository to a GitHub release, either '
+    '`--github-token` or `--github-user` is required.')
+gh_auth_group = gh_group.add_mutually_exclusive_group()
+gh_auth_group.add_argument(
+    '--github-token', dest='gh_access_token', metavar='GITHUB_TOKEN',
     help='Your GitHub API access token: https://github.com/settings/tokens')
+gh_auth_group.add_argument(
+    '--github-user', dest='gh_user', metavar='GITHUB_USER',
+    help='Your GitHub login user name.')
 gh_group.add_argument(
-    '--github-user', dest='gh_user',
-    help='Your GitHub login user name')
+    '--github-repo', metavar='GITHUB_REPO_PATH', dest='gh_repo',
+    help="If given a GitHub repoitory's `username/repo` path, "
+    "download the `*.deb` files from that repository's releases.")
+gh_group.add_argument(
+    '--github-apt-repo', metavar='GITHUB_REPO_PATH', dest='gh_apt_repo',
+    help="The GitHub `username/repo` path of the repository who's releases "
+    "the APT repositories will be uploaded to (default: --github-repo).")
 
 
-def download_release_debs(repo, tag=None, apt_dir=os.curdir):
+def parse_repo_path(api, repo_path):
+    """
+    Lookup a GitHub repository from the API given a `user/repo` path.
+    """
+    if api is None or repo_path is None:
+        return
+    user_name, repo_name = repo_path.split('/', 1)
+    return api.repository(user_name, repo_name)
+
+
+def download_release_debs(repo, tag=None, deb_dir=os.curdir):
     """
     Download all the `*.deb` assets from the release.
 
@@ -96,7 +125,7 @@ def download_release_debs(repo, tag=None, apt_dir=os.curdir):
             # Ignore all assets that aren't `*.deb` packages
             continue
 
-        dest = os.path.join(apt_dir, asset.name)
+        dest = os.path.join(deb_dir, asset.name)
         if not os.path.exists(dest):
             logger.info(
                 'Downloading release asset: %s', asset.browser_download_url)
@@ -131,7 +160,9 @@ def get_deb_dist_arch(deb, basename_re=DEB_BASENAME_RE):
     return dist, arch
 
 
-def group_debs(apt_dir=os.curdir, basename_re=DEB_BASENAME_RE):
+def group_debs(
+        deb_dir=os.curdir, apt_dir=os.curdir,
+        basename_re=DEB_BASENAME_RE):
     """
     Groups the `*.deb` files by unique distribution and architecture.
 
@@ -141,7 +172,7 @@ def group_debs(apt_dir=os.curdir, basename_re=DEB_BASENAME_RE):
     re-using previously downloaded `*.deb`s.
     """
     dist_arch_dirs = set()
-    for deb in glob.glob(os.path.join(apt_dir, '*.deb')):
+    for deb in glob.glob(os.path.join(deb_dir, '*.deb')):
         dist, arch = get_deb_dist_arch(deb, basename_re)
         if dist is None:
             dist_arch_dir = os.path.join(apt_dir, arch)
@@ -161,7 +192,8 @@ def group_debs(apt_dir=os.curdir, basename_re=DEB_BASENAME_RE):
     return dist_arch_dirs
 
 
-def make_apt_repo(gpg, gpg_user_id, gpg_pub_key_src, dist_arch_dir=os.curdir):
+def make_apt_repo(
+        gpg, gpg_user_id=None, gpg_pub_key_src=None, dist_arch_dir=os.curdir):
     """
     Make an APT repository from a directory containing `*.deb` files.
 
@@ -177,35 +209,46 @@ def make_apt_repo(gpg, gpg_user_id, gpg_pub_key_src, dist_arch_dir=os.curdir):
             ['dpkg-scanpackages', '-m', os.curdir, '/dev/null'],
             cwd=dist_arch_dir, stdout=packages)
 
-    # Make and sign the Release files
+    # Generate the Release file
     with open(os.path.join(dist_arch_dir, 'Release'), 'w') as release:
         logger.info('Writing %r', release.name)
         subprocess.check_call(
             ['apt-ftparchive', 'release', dist_arch_dir],
             stdout=release)
-    in_release_path = os.path.join(dist_arch_dir, 'InRelease')
-    release_gpg_path = os.path.join(dist_arch_dir, 'Release.gpg')
-    with open(os.path.join(dist_arch_dir, 'Release')) as release:
-        logger.info('Signing %r', in_release_path)
-        gpg.sign_file(release, keyid=gpg_user_id, output=in_release_path)
 
-        release.seek(0)
-        logger.info('Signing %r', release_gpg_path)
-        gpg.sign_file(
-            release, keyid=gpg_user_id,
-            clearsign=False, detach=True, output=release_gpg_path)
+    # Optionally sign the Release files
+    if gpg_user_id is not None:
+        in_release_path = os.path.join(dist_arch_dir, 'InRelease')
+        release_gpg_path = os.path.join(dist_arch_dir, 'Release.gpg')
+        with open(os.path.join(dist_arch_dir, 'Release')) as release:
+            logger.info('Signing %r', in_release_path)
+            signed = gpg.sign_file(
+                release, keyid=gpg_user_id, output=in_release_path)
+            if not signed.fingerprint:
+                raise ValueError(
+                    'Failed to sign the APT repository `InRelease` file')
 
-    # Link the public key
-    gpg_pub_key_dst = os.path.join(
-        dist_arch_dir, os.path.basename(gpg_pub_key_src))
-    if not os.path.exists(gpg_pub_key_dst):
-        logger.info('Linking the public key: %r', gpg_pub_key_dst)
-        os.link(gpg_pub_key_src, gpg_pub_key_dst)
+            release.seek(0)
+            logger.info('Signing %r', release_gpg_path)
+            signed = gpg.sign_file(
+                release, keyid=gpg_user_id,
+                clearsign=False, detach=True, output=release_gpg_path)
+            if not signed.fingerprint:
+                raise ValueError(
+                    'Failed to sign the APT repository `Release.gpg` file')
+
+    # Optionally link the public key
+    if gpg_pub_key_src is not None:
+        gpg_pub_key_dst = os.path.join(
+            dist_arch_dir, os.path.basename(gpg_pub_key_src))
+        if not os.path.exists(gpg_pub_key_dst):
+            logger.info('Linking the public key: %r', gpg_pub_key_dst)
+            os.link(gpg_pub_key_src, gpg_pub_key_dst)
 
 
-def get_github_repo(api, repo_dir=os.curdir, origin_url_re=GH_ORIGIN_URL_RE):
+def get_github_repo_path(repo_dir=os.curdir, origin_url_re=GH_ORIGIN_URL_RE):
     """
-    Get the GitHub API object for the `origin` of the repository.
+    Get the GitHub `user/repo` repository path from a checkout's origin.
     """
     origin_url = subprocess.check_output(
         ['git', 'remote', 'get-url', 'origin']).strip()
@@ -214,11 +257,10 @@ def get_github_repo(api, repo_dir=os.curdir, origin_url_re=GH_ORIGIN_URL_RE):
         raise ValueError(
             'Did not recognize origin remote URL '
             'as a GitHub remote: {0}'.format(origin_url))
-    return api.repository(
-        origin_match.group('gh_user'), origin_match.group('gh_repo'))
+    return origin_match.group('gh_repo_path')
 
 
-def release_apt_repo(repo, apt_dir, dist_arch_dir):
+def release_apt_repo(repo, apt_dir, dist_arch_dir, gpg_pub_key_basename=None):
     """
     Upload the APT repository as a GitHub release.
     """
@@ -251,7 +293,8 @@ def release_apt_repo(repo, apt_dir, dist_arch_dir):
             apt_add_repo.write(
                 apt_add_repo_tmpl.read().format(
                     base_download_url=base_download_url,
-                    basename=user_repo_basename))
+                    basename=user_repo_basename,
+                    gpg_pub_key_basename=gpg_pub_key_basename))
     os.chmod(
         apt_add_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR |
         stat.S_IRGRP | stat.S_IWGRP | stat.S_IXGRP | stat.S_IROTH |
@@ -300,75 +343,117 @@ def main():
     Download all release deb assets, build and upload APT repos.
     """
     logging.basicConfig(level=logging.INFO)
+
+    ##########################################################################
+    # First do as much option handling as possible to fail early             #
+    ##########################################################################
     args = parser.parse_args()
 
-    # Login to the GitHub API
-    if args.gh_access_token:
+    # Optionally sign into the GitHub API
+    api = None
+    if args.gh_access_token is not None:
         api = github3.login(token=args.gh_access_token)
-    else:
+    elif args.gh_user is not None:
         password = input('GitHub login password:')
         api = github3.login(username=args.gh_user, password=password)
+    elif args.gh_repo is not None or args.gh_apt_repo is not None:
+        parser.error(
+            'Must give `--github-token` or `--github-user` '
+            'if using `--github-repo` or `--github-apt-repo`')
 
-    repo = get_github_repo(api, args.repo_dir)
+    # Optionally determine the GitHub repositories
+    gh_repo_path = args.gh_repo
+    if gh_repo_path is None:
+        # Try to get a repo path from a checkout in the current directory
+        try:
+            gh_repo_path = get_github_repo_path()
+        except Exception:
+            pass
+    repo = apt_repo = parse_repo_path(api, gh_repo_path)
+    if args.gh_apt_repo is not None:
+        apt_repo = parse_repo_path(api, args.gh_apt_repo)
 
+    # Optionally set up GPG for signing the APT repositories
     gpg = gnupg.GPG()
     gpg_pub_key = args.gpg_pub_key
     gpg_user_id = args.gpg_user_id
-    if args.gh_apt_repo:
-        gpg_user_name, gpg_repo_name = args.gh_apt_repo.split('/', 1)
-    else:
-        gpg_user_name = repo.owner.login
-        gpg_repo_name = repo.name
     if gpg_pub_key is None:
-        if gpg_user_id is None:
+        if gpg_user_id is None and apt_repo is not None:
             gpg_user_id = (
                 '{repo_name} {user_name} '
                 '<{user_name}+{repo_name}@github.com>'.format(
-                    user_name=gpg_user_name, repo_name=gpg_repo_name))
+                    user_name=apt_repo.owner.login, repo_name=apt_repo.name))
 
-        gpg_pub_key = gpg.export_keys(gpg_user_id)
-        if not gpg_pub_key:
-            logger.info(
-                'Public key not found for %r, generating a new key',
-                gpg_user_id)
-            name_real, name_email = email.utils.parseaddr(
-                'From: ' + gpg_user_id)
-            gpg.gen_key(
-                gpg.gen_key_input(name_real=name_real, name_email=name_email))
-            gpg_pub_key, = gpg.export_keys(gpg_user_id)
+        if gpg_user_id is not None:
+            gpg_pub_key = gpg.export_keys(gpg_user_id)
+            if not gpg_pub_key:
+                logger.info(
+                    'Public key not found for %r, generating a new key',
+                    gpg_user_id)
+                name_real, name_email = email.utils.parseaddr(
+                    'From: ' + gpg_user_id)
+                generated = gpg.gen_key(
+                    gpg.gen_key_input(
+                        name_real=name_real, name_email=name_email))
+                if not generated.fingerprint:
+                    raise ValueError(
+                        'APT repository signing key not generated')
+                gpg_pub_key, = gpg.export_keys(gpg_user_id)
     else:
         gpg_pub_key, = gpg.scan_keys(gpg_pub_key)
         gpg_user_id = gpg_pub_key['user-id']
 
-    apt_dir = args.apt_dir
-    if apt_dir is None:
-        apt_dir = tempfile.mkdtemp(
-            prefix='apt-{0}-{1}'.format(repo.owner.login, repo.name))
+    ##########################################################################
+    # Finally, do any mutating or longer running tasks                       #
+    ##########################################################################
     try:
+        # Set up working directories
+        deb_dir = args.deb_dir
+        if deb_dir is None:
+            prefix = 'deb'
+            if apt_repo is not None:
+                prefix += '-{0}-{1}'.format(
+                    apt_repo.owner.login, apt_repo.name)
+            deb_dir = tempfile.mkdtemp(prefix=prefix)
+        apt_dir = args.apt_dir
+        if apt_dir is None:
+            apt_dir = deb_dir
 
-        gpg_pub_key_src = os.path.join(
-            apt_dir, '{0}-{1}.pub.key'.format(gpg_user_name, gpg_repo_name))
-        if not os.path.exists(gpg_pub_key_src):
-            logger.info('Writing public key: %s', gpg_pub_key_src)
-            with open(gpg_pub_key_src, 'w') as gpg_pub_key_opened:
-                gpg_pub_key_opened.write(gpg_pub_key)
+        # Download releases if the repo is given
+        if repo is not None:
+            download_release_debs(repo, deb_dir=deb_dir)
 
-        # TODO Support using locally built debs
-        download_release_debs(repo, apt_dir=apt_dir)
+        # Groups the `*.deb` files by unique distribution and architecture.
+        dist_arch_dirs = group_debs(deb_dir=deb_dir, apt_dir=apt_dir)
 
-        dist_arch_dirs = group_debs(apt_dir=apt_dir)
+        gpg_pub_key_src = None
+        if gpg_pub_key is not None:
+            gpg_pub_key_dotted = ''.join([
+                (char if char in _ALWAYS_SAFE else '.')
+                for char in gpg_user_id
+            ]) + '.pub.key'
+            # Strip duplicate dots
+            gpg_pub_key_basename = gpg_pub_key_dotted.replace('..', '.')
+            while gpg_pub_key_basename != gpg_pub_key_dotted:
+                gpg_pub_key_dotted = gpg_pub_key_basename
+                gpg_pub_key_basename = gpg_pub_key_dotted.replace('..', '.')
+            gpg_pub_key_src = os.path.join(apt_dir, gpg_pub_key_basename)
+            if not os.path.exists(gpg_pub_key_src):
+                logger.info('Writing public key: %s', gpg_pub_key_src)
+                with open(gpg_pub_key_src, 'w') as gpg_pub_key_opened:
+                    gpg_pub_key_opened.write(gpg_pub_key)
+
         for dist_arch_dir in dist_arch_dirs:
             make_apt_repo(gpg, gpg_user_id, gpg_pub_key_src, dist_arch_dir)
 
-        if args.gh_apt_repo:
+        if apt_repo is not None:
             for dist_arch_dir in dist_arch_dirs:
                 release_apt_repo(
-                    api.repository(*args.gh_apt_repo.split('/', 1)),
-                    apt_dir, dist_arch_dir)
+                    apt_repo, apt_dir, dist_arch_dir, gpg_pub_key_basename)
 
     finally:
-        if args.apt_dir is None:
-            shutil.rmtree(apt_dir, ignore_errors=True)
+        if args.deb_dir is None:
+            shutil.rmtree(deb_dir, ignore_errors=True)
 
 
 if __name__ == '__main__':
