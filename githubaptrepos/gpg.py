@@ -62,7 +62,7 @@ def set_up_gpg_key(args, apt_repo=None, gpg=gpg):
                 gpg_pub_key, = gpg.export_keys(gpg_user_id)
     else:
         gpg_pub_key, = gpg.scan_keys(gpg_pub_key)
-        gpg_user_id = gpg_pub_key['user-id']
+        gpg_user_id = gpg_pub_key['uids'][0]
 
     return gpg_pub_key, gpg_user_id
 
