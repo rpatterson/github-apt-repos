@@ -11,7 +11,7 @@ import logging
 
 from . import utils
 
-logger = logging.getLogger('github-apt-repose')
+logger = logging.getLogger('github-apt-repos')
 
 
 def main():
