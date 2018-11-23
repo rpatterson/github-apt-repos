@@ -80,4 +80,7 @@ def group_debs(
         if not os.path.exists(deb_link):
             logger.info('Linking: %r', deb_link)
             os.link(deb, deb_link)
+    if not dist_arch_dirs:
+        raise ValueError(
+            'No `*.deb` package files found in {0}'.format(deb_dir))
     return dist_arch_dirs

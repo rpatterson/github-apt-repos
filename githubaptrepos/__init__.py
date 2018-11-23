@@ -54,6 +54,10 @@ def main():
         # Set up working directories
         deb_dir = args.deb_dir
         if deb_dir is None:
+            if deb_repo is None:
+                raise ValueError(
+                    'Must provide `--deb-dir` or a GitHub repository from '
+                    'which to download release `*.deb` package files.')
             prefix = 'deb'
             if apt_repo is not None:
                 prefix += '-{0}-{1}'.format(
@@ -89,7 +93,8 @@ def main():
                     apt_repo, apt_dir, dist_arch_dir, gpg_pub_key_basename)
 
     finally:
-        if args.deb_dir is None:
+        if deb_dir is not None and args.deb_dir is None:
+            # If using a temporary directory, be sure to clean it up
             shutil.rmtree(deb_dir, ignore_errors=True)
 
 
