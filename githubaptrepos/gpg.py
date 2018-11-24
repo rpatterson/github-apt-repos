@@ -37,9 +37,9 @@ def set_up_gpg_key(args, apt_repo=None, gpg=gpg):
     """
     Optionally lookup or generate the GPG key to sign the APT repository.
     """
-    gpg_pub_key = args.gpg_pub_key
+    gpg_pub_key_path = args.gpg_pub_key
     gpg_user_id = args.gpg_user_id
-    if gpg_pub_key is None:
+    if gpg_pub_key_path is None:
         if gpg_user_id is None and apt_repo is not None:
             gpg_user_id = (
                 '{repo_name} {user_name} '
@@ -59,10 +59,11 @@ def set_up_gpg_key(args, apt_repo=None, gpg=gpg):
                 if not generated.fingerprint:
                     raise ValueError(
                         'APT repository signing key not generated')
-                gpg_pub_key, = gpg.export_keys(gpg_user_id)
+                gpg_pub_key = gpg.export_keys(gpg_user_id)
     else:
-        gpg_pub_key, = gpg.scan_keys(gpg_pub_key)
-        gpg_user_id = gpg_pub_key['uids'][0]
+        gpg_pub_key_scanned, = gpg.scan_keys(gpg_pub_key_path)
+        gpg_user_id = gpg_pub_key_scanned['uids'][0]
+        gpg_pub_key = gpg.export_keys(gpg_user_id)
 
     return gpg_pub_key, gpg_user_id
 
