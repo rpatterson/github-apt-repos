@@ -52,6 +52,10 @@ gh_group.add_argument(
     help="If given a GitHub repoitory's `username/repo` path, "
     "download the `*.deb` files from that repository's releases.")
 gh_group.add_argument(
+    '--github-prerelease', dest='gh_prerelease', action='store_true',
+    help="Get the latest GitHub release including pre-releases, "
+    "not just final releases? (default: False).")
+gh_group.add_argument(
     '--github-download-tag', metavar='GITHUB_RELEASE_TAG',
     dest='gh_download_tag',
     help="The GitHub release tag from which to download `*.deb` files "
@@ -95,24 +99,41 @@ def parse_repo_path(api, repo_path):
     return api.repository(user_name, repo_name)
 
 
-def download_release_debs(deb_repo, tag=None, deb_dir=os.curdir):
+def get_deb_assets(release):
+    """
+    Get all the release assets that contain `*.deb` package files.
+    """
+    return [
+        asset for asset in release.assets()
+        if os.path.splitext(asset.name)[1] == '.deb']
+
+
+def download_release_debs(
+        deb_repo, prerelease=False, tag=None, deb_dir=os.curdir):
     """
     Download all the `*.deb` assets from the release.
 
     Defaults to the latest release.
     """
-    if tag is None:
-        release = deb_repo.latest_release()
-    else:
+    if tag is not None:
         release = deb_repo.release_from_tag(tag)
+        assets = get_deb_assets(release)
+    elif prerelease:
+        for release in deb_repo.releases():
+            assets = get_deb_assets(release)
+            if assets:
+                break
+            else:
+                logger.warn('No `*.deb` assets found in %r', release)
+    else:
+        release = deb_repo.latest_release()
+        assets = get_deb_assets(release)
 
-    assets = []
-    for asset in release.assets():
-        name, ext = os.path.splitext(asset.name)
-        if ext.lower() != '.deb':
-            # Ignore all assets that aren't `*.deb` packages
-            continue
+    if not assets:
+        raise ValueError(
+            'No `*.deb` assets in {0!r}'.format(release))
 
+    for asset in assets:
         dest = os.path.join(deb_dir, asset.name)
         if not os.path.exists(dest):
             logger.info(
@@ -122,9 +143,7 @@ def download_release_debs(deb_repo, tag=None, deb_dir=os.curdir):
             logger.info(
                 'Re-using previously downloaded `*.deb` file: %r', dest)
 
-        assets.append(asset)
-
-    return assets
+    return release.tag_name, assets
 
 
 def get_github_repo_path(repo_dir=os.curdir, origin_url_re=GH_ORIGIN_URL_RE):
