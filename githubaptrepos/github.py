@@ -52,9 +52,20 @@ gh_group.add_argument(
     help="If given a GitHub repoitory's `username/repo` path, "
     "download the `*.deb` files from that repository's releases.")
 gh_group.add_argument(
+    '--github-download-tag', metavar='GITHUB_RELEASE_TAG',
+    dest='gh_download_tag',
+    help="The GitHub release tag from which to download `*.deb` files "
+    "(default: latest release).")
+gh_group.add_argument(
     '--github-apt-repo', metavar='GITHUB_REPO_PATH', dest='gh_apt_repo',
     help="The GitHub `username/repo` path of the repository who's releases "
     "the APT repositories will be uploaded to (default: --github-repo).")
+gh_group.add_argument(
+    '--github-release-prefix', metavar='GITHUB_RELEASE_TAG_PREFIX',
+    dest='gh_release_prefix',
+    help="A prefix to prepend to the `apt-dist-arch` to form the GitHub "
+    "release tag to upload the APT repository to."
+    "(default: `--github-download-tag` or none for the latest release).")
 
 
 def login(args):
@@ -131,13 +142,15 @@ def get_github_repo_path(repo_dir=os.curdir, origin_url_re=GH_ORIGIN_URL_RE):
 
 
 def release_apt_repo(
-        apt_repo, apt_dir, dist_arch_dir, gpg_pub_key_basename=None):
+        apt_repo, apt_dir, dist_arch_dir,
+        tag_prefix=None, gpg_pub_key_basename=None):
     """
     Upload the APT repository as a GitHub release.
     """
     # Convert the dist+arch specific APT repo path to a GH-friendly tag
     dist_arch = os.path.relpath(dist_arch_dir, apt_dir)
-    tag = 'apt-' + dist_arch.replace('/', '-')
+    tag = tag_prefix + '-' + dist_arch.replace('/', '-')
+
     base_download_url = 'https://github.com/{0}/releases/download/{1}'.format(
         apt_repo.full_name, tag)
     user_repo_basename = apt_repo.owner.login + '-' + apt_repo.name
@@ -175,7 +188,8 @@ def release_apt_repo(
     try:
         release = apt_repo.release_from_tag(tag)
     except github3.exceptions.NotFoundError:
-        name = 'Debian/Ubuntu APT repository for {0}'.format(dist_arch)
+        name = 'Debian/Ubuntu APT repository for {0} on {1}'.format(
+            tag, dist_arch)
         with open(os.path.join(
                 os.path.dirname(__file__), 'release-body.md')) as body_opened:
             # Generate the release body text

@@ -69,7 +69,8 @@ def main():
 
         # Download releases if the repo is given
         if deb_repo is not None:
-            github.download_release_debs(deb_repo, deb_dir=deb_dir)
+            github.download_release_debs(
+                deb_repo, tag=args.gh_download_tag, deb_dir=deb_dir)
 
         # Groups the `*.deb` files by unique distribution and architecture.
         dist_arch_dirs = repo.group_debs(deb_dir=deb_dir, apt_dir=apt_dir)
@@ -88,9 +89,14 @@ def main():
             gpg.make_apt_repo(gpg_user_id, gpg_pub_key_src, dist_arch_dir)
 
         if apt_repo is not None:
+            tag_prefix = args.gh_release_prefix or args.gh_download_tag
+            if tag_prefix is not None:
+                tag_prefix = 'apt-' + tag_prefix
             for dist_arch_dir in dist_arch_dirs:
                 github.release_apt_repo(
-                    apt_repo, apt_dir, dist_arch_dir, gpg_pub_key_basename)
+                    apt_repo, apt_dir, dist_arch_dir,
+                    tag_prefix=tag_prefix,
+                    gpg_pub_key_basename=gpg_pub_key_basename)
 
     finally:
         if deb_dir is not None and args.deb_dir is None:
