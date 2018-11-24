@@ -60,6 +60,8 @@ See the builtin, CLI help for further details::
 
   $ github-apt-repos --help
 
+For example, TODO
+
 
 TODO
 ----
@@ -76,6 +78,8 @@ Other TODOs:
 - Release to PyPI
 - Dogfood ``*.deb`` releases hosted in an APT repository on GitHub
 - Short CLI options?  I'm really not sure we should.
+- GitHub CLI to automatically build the apt repo when the upstream fork adds a
+  release tag
 
 I'm also open to discussing other contributions and feature requests.
 Send PR's freely.
