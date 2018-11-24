@@ -78,8 +78,9 @@ def main():
         gpg_pub_key_src = None
         if gpg_pub_key is not None:
             gpg_pub_key_basename = utils.quote_dotted(
-                email.utils.parseaddr(gpg_user_id)[1]) + '.pub.key'
-            gpg_pub_key_src = os.path.join(apt_dir, gpg_pub_key_basename)
+                email.utils.parseaddr(gpg_user_id)[1])
+            gpg_pub_key_src = os.path.join(
+                apt_dir, gpg_pub_key_basename + '.pub.key')
             if not os.path.exists(gpg_pub_key_src):
                 logger.info('Writing public key: %s', gpg_pub_key_src)
                 with open(gpg_pub_key_src, 'w') as gpg_pub_key_opened:
