@@ -125,6 +125,7 @@ def download_release_debs(
                 break
             else:
                 logger.warn('No `*.deb` assets found in %r', release)
+        tag = release.tag_name
     else:
         release = deb_repo.latest_release()
         assets = get_deb_assets(release)
@@ -143,7 +144,7 @@ def download_release_debs(
             logger.info(
                 'Re-using previously downloaded `*.deb` file: %r', dest)
 
-    return release.tag_name, assets
+    return tag, assets
 
 
 def get_github_repo_path(repo_dir=os.curdir, origin_url_re=GH_ORIGIN_URL_RE):
@@ -168,6 +169,10 @@ def release_apt_repo(
     """
     # Convert the dist+arch specific APT repo path to a GH-friendly tag
     dist_arch = os.path.relpath(dist_arch_dir, apt_dir)
+    if tag_prefix is None:
+        tag_prefix = 'apt'
+    else:
+        tag_prefix = 'apt-' + tag_prefix
     tag = tag_prefix + '-' + dist_arch.replace('/', '-')
 
     base_download_url = 'https://github.com/{0}/releases/download/{1}'.format(
