@@ -70,6 +70,11 @@ gh_group.add_argument(
     help="A prefix to prepend to the `apt-dist-arch` to form the GitHub "
     "release tag to upload the APT repository to."
     "(default: `--github-download-tag` or none for the latest release).")
+gh_group.add_argument(
+    '--github-delete-existing', action='store_true',
+    dest='gh_delete_existing',
+    help="Delete and re-upload existing release assets if present. "
+    "(default: False).")
 
 
 def login(args):
@@ -163,7 +168,7 @@ def get_github_repo_path(repo_dir=os.curdir, origin_url_re=GH_ORIGIN_URL_RE):
 
 def release_apt_repo(
         apt_repo, apt_dir, dist_arch_dir,
-        tag_prefix=None, gpg_pub_key_basename=None):
+        tag_prefix=None, gpg_pub_key_basename=None, delete_existing=False):
     """
     Upload the APT repository as a GitHub release.
     """
@@ -226,11 +231,17 @@ def release_apt_repo(
     for asset_name in os.listdir(dist_arch_dir):
         asset = assets.get(asset_name)
         if asset is not None:
-            # Delete any assets that correspond to one in the repo
-            logger.info(
-                'Deleting existing release asset: %s',
-                asset.browser_download_url)
-            asset.delete()
+            if os.path.splitext(asset_name)[1] != '.deb' or delete_existing:
+                # Delete any assets that correspond to one in the repo
+                logger.info(
+                    'Deleting existing release asset: %s',
+                    asset.browser_download_url)
+                asset.delete()
+            else:
+                logger.info(
+                    'Preserving existing release asset: %s',
+                    asset.browser_download_url)
+                continue
 
         # Guess the most appropriate MIME type
         path = os.path.join(dist_arch_dir, asset_name)

@@ -96,7 +96,8 @@ def main():
                 github.release_apt_repo(
                     apt_repo, apt_dir, dist_arch_dir,
                     tag_prefix=args.gh_release_prefix or tag,
-                    gpg_pub_key_basename=gpg_pub_key_basename)
+                    gpg_pub_key_basename=gpg_pub_key_basename,
+                    delete_existing=args.gh_delete_existing)
 
     finally:
         if deb_dir is not None and args.deb_dir is None:
