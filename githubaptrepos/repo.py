@@ -47,7 +47,10 @@ def get_deb_dist_arch(deb, basename_re=DEB_BASENAME_RE):
         DEB_BASENAME_RE.format(
             arch=arch, package=package, version=version),
         os.path.splitext(os.path.basename(deb))[0])
-    dist = deb_basename_match.group(2)
+    if deb_basename_match is None:
+        dist = None
+    else:
+        dist = deb_basename_match.group(2)
     return dist, arch
 
 
