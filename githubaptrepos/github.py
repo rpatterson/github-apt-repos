@@ -125,6 +125,10 @@ def download_release_debs(
         assets = get_deb_assets(release)
     elif prerelease:
         for release in deb_repo.releases():
+            if not release.prerelease:
+                # Skip any final releases that may have been released more
+                # recently than a pre-release
+                continue
             assets = get_deb_assets(release)
             if assets:
                 break
