@@ -132,6 +132,11 @@ def download_release_debs(
             assets = get_deb_assets(release)
             if assets:
                 break
+        else:
+            # No prerelease found, use the latest stable release
+            release = deb_repo.latest_release()
+            logger.warn('No prerelease, falling back to latest %r', release)
+            assets = get_deb_assets(release)
         tag = release.tag_name
     else:
         release = deb_repo.latest_release()
