@@ -132,8 +132,6 @@ def download_release_debs(
             assets = get_deb_assets(release)
             if assets:
                 break
-            else:
-                logger.warn('No `*.deb` assets found in %r', release)
         tag = release.tag_name
     else:
         release = deb_repo.latest_release()
