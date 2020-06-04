@@ -81,6 +81,8 @@ def main():
         if gpg_pub_key is not None:
             gpg_pub_key_basename = utils.quote_dotted(
                 email.utils.parseaddr(gpg_user_id)[1])
+            if gpg_pub_key_basename == '':
+                gpg_pub_key_basename = 'default'
             gpg_pub_key_src = os.path.join(
                 apt_dir, gpg_pub_key_basename + '.pub.key')
             if not os.path.exists(gpg_pub_key_src):
