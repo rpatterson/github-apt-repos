@@ -187,6 +187,8 @@ def release_apt_repo(
         tag_prefix = 'apt-' + tag_prefix
     tag = tag_prefix + '-' + dist_arch.replace('/', '-')
 
+    # Hardcode this for feverscreen, since we want the sources location to be constant.
+    tag = "feverscreen"
     base_download_url = 'https://github.com/{0}/releases/download/{1}'.format(
         apt_repo.full_name, tag)
     user_repo_basename = apt_repo.owner.login + '-' + apt_repo.name
@@ -260,6 +262,10 @@ def release_apt_repo(
         # NOTE: for some reason .deb files were being treated as text, and then utf-8 validation fails
         #  when trying to upload them.  Make sure we open .deb files as binary.
         if asset_name.endswith('.deb'):
+            mode = 'rb'
+        elif asset_name == 'Release.gpg':
+            mode = 'rb'
+        elif asset_name == 'InRelease':
             mode = 'rb'
         else:
             mode = 'r'

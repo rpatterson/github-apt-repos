@@ -56,6 +56,7 @@ def set_up_gpg_key(args, apt_repo=None, gpg=gpg):
                 generated = gpg.gen_key(
                     gpg.gen_key_input(
                         name_real=name_real, name_email=name_email))
+                print("GPGKEY", generated)
                 if not generated.fingerprint:
                     raise ValueError(
                         'APT repository signing key not generated')
@@ -82,6 +83,7 @@ def make_apt_repo(
     # Generate the Packages file
     with open(os.path.join(dist_arch_dir, 'Packages'), 'w') as packages:
         logger.info('Writing %r', packages.name)
+
         subprocess.check_call(
             ['dpkg-scanpackages', '-m', os.curdir, '/dev/null'],
             cwd=dist_arch_dir, stdout=packages)
@@ -97,7 +99,7 @@ def make_apt_repo(
     if gpg_user_id is not None:
         in_release_path = os.path.join(dist_arch_dir, 'InRelease')
         release_gpg_path = os.path.join(dist_arch_dir, 'Release.gpg')
-        with open(os.path.join(dist_arch_dir, 'Release')) as release:
+        with open(os.path.join(dist_arch_dir, 'Release'), 'rb') as release:
             logger.info('Signing %r', in_release_path)
             signed = gpg.sign_file(
                 release, keyid=gpg_user_id, output=in_release_path)
