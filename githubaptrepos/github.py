@@ -187,8 +187,6 @@ def release_apt_repo(
         tag_prefix = 'apt-' + tag_prefix
     tag = tag_prefix + '-' + dist_arch.replace('/', '-')
 
-    # Hardcode this for feverscreen, since we want the sources location to be constant.
-    tag = "feverscreen"
     base_download_url = 'https://github.com/{0}/releases/download/{1}'.format(
         apt_repo.full_name, tag)
     user_repo_basename = apt_repo.owner.login + '-' + apt_repo.name
