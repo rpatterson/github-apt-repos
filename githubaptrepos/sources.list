@@ -1,1 +1,1 @@
-deb {base_download_url} ./
+deb [trusted=yes] {base_download_url} ./
