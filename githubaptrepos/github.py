@@ -259,14 +259,7 @@ def release_apt_repo(
 
         # NOTE: for some reason .deb files were being treated as text, and then utf-8 validation fails
         #  when trying to upload them.  Make sure we open .deb files as binary.
-        if asset_name.endswith('.deb'):
-            mode = 'rb'
-        elif asset_name == 'Release.gpg':
-            mode = 'rb'
-        elif asset_name == 'InRelease':
-            mode = 'rb'
-        else:
-            mode = 'r'
+        mode = 'rb'
 
         logger.info(
             'Uploading release asset: %s', path)
