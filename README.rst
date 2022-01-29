@@ -43,7 +43,7 @@ in an environment where you can preserve and manage the private keys.
 
 Finally, install the actual package and its dependencies::
 
-  $ sudo pip install https://github.com/rpatterson/github-apt-repos.git
+  $ sudo pip install https://github.com/rpatterson/github-apt-repos/archive/refs/heads/master.tar.gz
 
 
 Usage
