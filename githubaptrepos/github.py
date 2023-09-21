@@ -257,9 +257,13 @@ def release_apt_repo(
             content_type, encoding = mimetypes.guess_type(
                 asset_name + APT_EXTENSIONS.get(asset_name, '.txt'))
 
+        # NOTE: for some reason .deb files were being treated as text, and then utf-8 validation fails
+        #  when trying to upload them.  Make sure we open .deb files as binary.
+        mode = 'rb'
+
         logger.info(
             'Uploading release asset: %s', path)
-        with open(path) as asset_opened:
+        with open(path, mode) as asset_opened:
             asset = release.upload_asset(
                 content_type=content_type, name=asset_name,
                 asset=asset_opened)
