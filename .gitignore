@@ -1,2 +1,7 @@
+# Common backup files suffix:
+*~
+
+# Build artifacts:
 /.venv
 /apt
+/github_apt_repos.egg-info
